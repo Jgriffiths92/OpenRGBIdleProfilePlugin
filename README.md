@@ -66,4 +66,4 @@ Build command from this folder:
 
 ## License
 
-Choose and add your license file (for example MIT) before publishing.
+This project is licensed under the GNU General Public License v2.0 (GPL-2.0) - see the LICENSE file for details.
