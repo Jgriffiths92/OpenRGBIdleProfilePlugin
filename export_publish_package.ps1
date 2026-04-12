@@ -16,10 +16,12 @@ New-Item -ItemType Directory -Path $outPath | Out-Null
 
 $files = @(
     "CMakeLists.txt",
-    "IdleProfilePlugin.cpp",
-    "IdleProfilePlugin.h",
-    "IdleProfileWidget.cpp",
-    "IdleProfileWidget.h",
+    "plugins\CMakeLists.txt",
+    "plugins\IdleProfilePlugin\CMakeLists.txt",
+    "plugins\IdleProfilePlugin\IdleProfilePlugin.cpp",
+    "plugins\IdleProfilePlugin\IdleProfilePlugin.h",
+    "plugins\IdleProfilePlugin\IdleProfileWidget.cpp",
+    "plugins\IdleProfilePlugin\IdleProfileWidget.h",
     "build_and_stage.ps1",
     "BUILD_TEST.md",
     "README.md",
@@ -31,14 +33,19 @@ $files = @(
 foreach ($file in $files) {
     $src = Join-Path $pluginRoot $file
     if (Test-Path $src) {
-        Copy-Item $src (Join-Path $outPath $file) -Force
+        $dst = Join-Path $outPath $file
+        $dstDir = Split-Path -Parent $dst
+        if ($dstDir -and -not (Test-Path $dstDir)) {
+            New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+        }
+        Copy-Item $src $dst -Force
     }
 }
 
 if ($IncludeBuiltDll) {
-    $dll = Join-Path $pluginRoot "build\Release\IdleProfilePlugin.dll"
-    if (Test-Path $dll) {
-        Copy-Item $dll (Join-Path $outPath "IdleProfilePlugin.dll") -Force
+    $dll = Get-ChildItem -Path (Join-Path $pluginRoot "build") -Recurse -Filter "IdleProfilePlugin.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($dll) {
+        Copy-Item $dll.FullName (Join-Path $outPath "IdleProfilePlugin.dll") -Force
     }
 }
 
