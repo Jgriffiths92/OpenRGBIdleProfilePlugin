@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build IdleProfilePlugin DLL",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/build_and_stage.ps1",
+        "-QtPrefixPath",
+        "${input:qtPrefixPath}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Clean Build IdleProfilePlugin DLL",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/build_and_stage.ps1",
+        "-QtPrefixPath",
+        "${input:qtPrefixPath}",
+        "-Clean"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "qtPrefixPath",
+      "type": "promptString",
+      "description": "Qt kit root used by CMake, for example C:/Qt/5.15.2/msvc2019_64",
+      "default": "C:/Qt/5.15.2/msvc2019_64"
+    }
+  ]
+}

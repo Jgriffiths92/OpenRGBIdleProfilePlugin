@@ -4,6 +4,12 @@ project(IdleProfilePlugin)
 
 set(CMAKE_AUTOMOC ON)
 
+set(OPENRGB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to the OpenRGB source tree")
+
+if(NOT EXISTS "${OPENRGB_SOURCE_ROOT}/OpenRGB/OpenRGBPluginInterface.h")
+    message(FATAL_ERROR "OPENRGB_SOURCE_ROOT must point to an OpenRGB source tree containing OpenRGB/OpenRGBPluginInterface.h")
+endif()
+
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets)
 
@@ -14,12 +20,11 @@ add_library(IdleProfilePlugin SHARED
 
 target_compile_features(IdleProfilePlugin PRIVATE cxx_std_17)
 
-set(OPENRGB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
-
 target_include_directories(IdleProfilePlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${OPENRGB_SOURCE_ROOT}
-    ${OPENRGB_SOURCE_ROOT}/i2c_smbus
+    ${OPENRGB_SOURCE_ROOT}/OpenRGB
+    ${OPENRGB_SOURCE_ROOT}/OpenRGB/i2c_smbus
 )
 
 target_link_libraries(IdleProfilePlugin
