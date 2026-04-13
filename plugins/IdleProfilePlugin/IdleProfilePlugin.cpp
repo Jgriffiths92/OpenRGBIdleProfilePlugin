@@ -204,7 +204,7 @@ OpenRGBPluginInfo IdleProfilePlugin::GetPluginInfo()
     OpenRGBPluginInfo info;
     info.Name = "Idle Profile Plugin";
     info.Description = "Switches OpenRGB profiles based on user idle state";
-    info.Version = "0.1.0";
+    info.Version = "1.0.1";
     info.Commit = "local";
     info.URL = "https://openrgb.org";
     info.Icon = QImage();

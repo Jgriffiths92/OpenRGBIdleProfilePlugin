@@ -2,16 +2,19 @@
 
 ## Version
 
-1.0.0
+1.0.1
 
 ## Summary
 
-Initial public release of the OpenRGB Idle Profile Plugin.
+Screen power-state aware update for the OpenRGB Idle Profile Plugin.
 
 ## Highlights
 
 - Idle-to-profile switching after configurable inactivity timeout
 - Active profile restore on user input resume
+- Optional screen-off detection to trigger idle profile when display powers down
+- Optional active profile restore when display powers back on
+- Monitor compatibility note in plugin UI for display power events
 - Top-level OpenRGB tab interface
 - Profile refresh button
 - Startup active profile apply option
@@ -39,8 +42,8 @@ Initial public release of the OpenRGB Idle Profile Plugin.
 
 ## Checks Before Publishing
 
-- [ ] Bump version in plugin metadata if changed
-- [ ] Build release DLL
+- [x] Bump version in plugin metadata if changed
+- [x] Build release DLL
 - [ ] Verify plugin loads in OpenRGB
 - [ ] Verify idle -> active switching
 - [ ] Attach DLL to GitLab Release assets

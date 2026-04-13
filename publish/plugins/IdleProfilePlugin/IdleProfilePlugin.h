@@ -40,6 +40,8 @@ public:
     bool GetEnabled();
     bool GetApplyActiveOnStart();
     int GetResumeCooldownSeconds();
+    bool GetDetectScreenOff();
+    bool GetApplyActiveOnScreenOn();
     bool GetDebugLogging();
     bool GetIsCurrentlyIdle();
     qint64 GetLastSwitchEpochMs();
@@ -50,6 +52,8 @@ public:
     void SetEnabled(bool is_enabled);
     void SetApplyActiveOnStart(bool value);
     void SetResumeCooldownSeconds(int seconds);
+    void SetDetectScreenOff(bool value);
+    void SetApplyActiveOnScreenOn(bool value);
     void SetDebugLogging(bool value);
 
     // settings (shared with UI)
@@ -59,6 +63,8 @@ public:
     bool enabled = true;
     bool apply_active_on_start = false;
     int resume_cooldown_seconds = 3;
+    bool detect_screen_off = true;
+    bool apply_active_on_screen_on = false;
     bool debug_logging = false;
 
 private:

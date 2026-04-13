@@ -60,13 +60,18 @@ function Resolve-CMakeExecutable {
     if ($QtCMakeBin) {
         $cmakePath = Join-Path $QtCMakeBin "cmake.exe"
         if (Test-Path $cmakePath) {
-            return Get-Item $cmakePath
+            return [System.IO.Path]::GetFullPath($cmakePath)
         }
     }
 
     $cmake = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmake) {
-        return $cmake
+        if ($cmake.Path) {
+            return $cmake.Path
+        }
+        if ($cmake.Source) {
+            return $cmake.Source
+        }
     }
 
     $commonCMakePaths = @(
@@ -76,7 +81,7 @@ function Resolve-CMakeExecutable {
 
     foreach ($cmakePath in $commonCMakePaths) {
         if (Test-Path $cmakePath) {
-            return Get-Item $cmakePath
+            return [System.IO.Path]::GetFullPath($cmakePath)
         }
     }
 
@@ -87,7 +92,7 @@ if ($Clean -and (Test-Path $buildPath)) {
     Remove-Item -Recurse -Force $buildPath
 }
 
-$cmake = Resolve-CMakeExecutable -QtCMakeBin $QtCMakeBin
+$cmakeExe = Resolve-CMakeExecutable -QtCMakeBin $QtCMakeBin
 
 if (-not $QtPrefixPath) {
     throw "QtPrefixPath is required. Example: -QtPrefixPath C:\\Qt\\6.8.0\\msvc2022_64"
@@ -99,8 +104,8 @@ New-Item -ItemType Directory -Force -Path $buildPath | Out-Null
 Push-Location $buildPath
 
 try {
-    & $cmake.FullName "-S" $pluginRoot "-B" $buildPath "-DCMAKE_BUILD_TYPE=$Config" "-DCMAKE_PREFIX_PATH=$QtPrefixPath" "-DOPENRGB_SOURCE_ROOT=$resolvedOpenRGBSourceRoot"
-    & $cmake.FullName "--build" $buildPath "--config" $Config
+    & $cmakeExe "-S" $pluginRoot "-B" $buildPath "-DCMAKE_BUILD_TYPE=$Config" "-DCMAKE_PREFIX_PATH=$QtPrefixPath" "-DOPENRGB_SOURCE_ROOT=$resolvedOpenRGBSourceRoot"
+    & $cmakeExe "--build" $buildPath "--config" $Config
 }
 finally {
     Pop-Location
