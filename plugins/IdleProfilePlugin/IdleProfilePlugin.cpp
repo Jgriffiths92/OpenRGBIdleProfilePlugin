@@ -60,9 +60,10 @@ public:
             return false;
         }
 
-        notify_handle = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
+        notify_console_display_state_handle = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
+        notify_monitor_power_handle = RegisterPowerSettingNotification(hwnd, &GUID_MONITOR_POWER_ON, DEVICE_NOTIFY_WINDOW_HANDLE);
 
-        if(notify_handle == nullptr)
+        if(notify_console_display_state_handle == nullptr && notify_monitor_power_handle == nullptr)
         {
             DestroyWindow(hwnd);
             hwnd = nullptr;
@@ -118,6 +119,13 @@ private:
                 self->display_off = (state == 0);
                 return TRUE;
             }
+
+            if(setting != nullptr && IsEqualGUID(setting->PowerSetting, GUID_MONITOR_POWER_ON) && setting->DataLength >= sizeof(DWORD))
+            {
+                const DWORD monitor_on = *reinterpret_cast<const DWORD*>(setting->Data);
+                self->display_off = (monitor_on == 0);
+                return TRUE;
+            }
         }
 
         return DefWindowProcW(window, msg, wparam, lparam);
@@ -125,10 +133,16 @@ private:
 
     void Shutdown()
     {
-        if(notify_handle != nullptr)
+        if(notify_console_display_state_handle != nullptr)
         {
-            UnregisterPowerSettingNotification(notify_handle);
-            notify_handle = nullptr;
+            UnregisterPowerSettingNotification(notify_console_display_state_handle);
+            notify_console_display_state_handle = nullptr;
+        }
+
+        if(notify_monitor_power_handle != nullptr)
+        {
+            UnregisterPowerSettingNotification(notify_monitor_power_handle);
+            notify_monitor_power_handle = nullptr;
         }
 
         if(hwnd != nullptr)
@@ -139,7 +153,8 @@ private:
     }
 
     HWND hwnd = nullptr;
-    HPOWERNOTIFY notify_handle = nullptr;
+    HPOWERNOTIFY notify_console_display_state_handle = nullptr;
+    HPOWERNOTIFY notify_monitor_power_handle = nullptr;
     bool display_off = false;
 };
 #endif
