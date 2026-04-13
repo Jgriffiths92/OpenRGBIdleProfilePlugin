@@ -25,6 +25,9 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     screenStateNoteLabel->setWordWrap(true);
     layout->addWidget(screenStateNoteLabel);
 
+    pauseIdleWhileMediaPlayingBox = new QCheckBox("Do not trigger idle while media is playing");
+    layout->addWidget(pauseIdleWhileMediaPlayingBox);
+
     debugLoggingBox = new QCheckBox("Enable debug logging");
     layout->addWidget(debugLoggingBox);
 
@@ -71,6 +74,7 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     connect(applyActiveOnStartBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(detectScreenOffBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(applyActiveOnScreenOnBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
+    connect(pauseIdleWhileMediaPlayingBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(debugLoggingBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(idleTime, qOverload<int>(&QSpinBox::valueChanged), this, &IdleProfileWidget::Save);
     connect(cooldownSeconds, qOverload<int>(&QSpinBox::valueChanged), this, &IdleProfileWidget::Save);
@@ -120,6 +124,7 @@ void IdleProfileWidget::RefreshUI()
     QSignalBlocker applyAtStartupBlocker(applyActiveOnStartBox);
     QSignalBlocker detectScreenOffBlocker(detectScreenOffBox);
     QSignalBlocker applyActiveOnScreenOnBlocker(applyActiveOnScreenOnBox);
+    QSignalBlocker pauseIdleWhileMediaPlayingBlocker(pauseIdleWhileMediaPlayingBox);
     QSignalBlocker debugLoggingBlocker(debugLoggingBox);
     QSignalBlocker idleTimeBlocker(idleTime);
     QSignalBlocker cooldownBlocker(cooldownSeconds);
@@ -130,6 +135,7 @@ void IdleProfileWidget::RefreshUI()
     applyActiveOnStartBox->setChecked(plugin->GetApplyActiveOnStart());
     detectScreenOffBox->setChecked(plugin->GetDetectScreenOff());
     applyActiveOnScreenOnBox->setChecked(plugin->GetApplyActiveOnScreenOn());
+    pauseIdleWhileMediaPlayingBox->setChecked(plugin->GetPauseIdleWhileMediaPlaying());
     debugLoggingBox->setChecked(plugin->GetDebugLogging());
     idleTime->setValue(plugin->GetIdleSeconds());
     cooldownSeconds->setValue(plugin->GetResumeCooldownSeconds());
@@ -174,6 +180,7 @@ void IdleProfileWidget::Save()
     plugin->SetApplyActiveOnStart(applyActiveOnStartBox->isChecked());
     plugin->SetDetectScreenOff(detectScreenOff);
     plugin->SetApplyActiveOnScreenOn(applyActiveOnScreenOn);
+    plugin->SetPauseIdleWhileMediaPlaying(pauseIdleWhileMediaPlayingBox->isChecked());
     plugin->SetDebugLogging(debugLoggingBox->isChecked());
     plugin->SetIdleSeconds(idleTime->value());
     plugin->SetResumeCooldownSeconds(cooldownSeconds->value());

@@ -20,6 +20,24 @@
 #include <QDebug>
 
 #ifdef _WIN32
+#include <mmdeviceapi.h>
+#include <audiopolicy.h>
+#if __has_include(<winrt/Windows.Media.Control.h>)
+#include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Media.Control.h>
+#define IDLEPROFILE_HAS_WINRT_MEDIA_CONTROL 1
+#else
+#define IDLEPROFILE_HAS_WINRT_MEDIA_CONTROL 0
+#endif
+#pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Uuid.lib")
+
+#ifdef Playing
+#undef Playing
+#endif
+
 // Tracks console display power state using a hidden message-only window.
 class DisplayStateWatcher
 {
@@ -157,6 +175,130 @@ private:
     HPOWERNOTIFY notify_monitor_power_handle = nullptr;
     bool display_off = false;
 };
+
+static bool IsAudioSessionPlaybackActive()
+{
+    IMMDeviceEnumerator* device_enumerator = nullptr;
+    IMMDevice* default_audio_device = nullptr;
+    IAudioSessionManager2* session_manager = nullptr;
+    IAudioSessionEnumerator* session_enumerator = nullptr;
+    int session_count = 0;
+    bool media_playing = false;
+
+    HRESULT hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),
+        nullptr,
+        CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator),
+        reinterpret_cast<void**>(&device_enumerator)
+    );
+
+    if(FAILED(hr) || device_enumerator == nullptr)
+    {
+        return false;
+    }
+
+    hr = device_enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &default_audio_device);
+    if(FAILED(hr) || default_audio_device == nullptr)
+    {
+        device_enumerator->Release();
+        return false;
+    }
+
+    hr = default_audio_device->Activate(
+        __uuidof(IAudioSessionManager2),
+        CLSCTX_ALL,
+        nullptr,
+        reinterpret_cast<void**>(&session_manager)
+    );
+
+    if(FAILED(hr) || session_manager == nullptr)
+    {
+        default_audio_device->Release();
+        device_enumerator->Release();
+        return false;
+    }
+
+    hr = session_manager->GetSessionEnumerator(&session_enumerator);
+    if(FAILED(hr) || session_enumerator == nullptr)
+    {
+        session_manager->Release();
+        default_audio_device->Release();
+        device_enumerator->Release();
+        return false;
+    }
+
+    hr = session_enumerator->GetCount(&session_count);
+    if(SUCCEEDED(hr))
+    {
+        for(int index = 0; index < session_count; ++index)
+        {
+            IAudioSessionControl* session_control = nullptr;
+            if(FAILED(session_enumerator->GetSession(index, &session_control)) || session_control == nullptr)
+            {
+                continue;
+            }
+
+            AudioSessionState state = AudioSessionStateInactive;
+            if(SUCCEEDED(session_control->GetState(&state)) && state == AudioSessionStateActive)
+            {
+                media_playing = true;
+                session_control->Release();
+                break;
+            }
+
+            session_control->Release();
+        }
+    }
+
+    session_enumerator->Release();
+    session_manager->Release();
+    default_audio_device->Release();
+    device_enumerator->Release();
+    return media_playing;
+}
+
+static bool IsMediaPlaybackActive()
+{
+#if IDLEPROFILE_HAS_WINRT_MEDIA_CONTROL
+    try
+    {
+        using namespace winrt::Windows::Media::Control;
+
+        const auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+        if(!manager)
+        {
+            return IsAudioSessionPlaybackActive();
+        }
+
+        const auto sessions = manager.GetSessions();
+        const uint32_t session_count = sessions.Size();
+        for(uint32_t index = 0; index < session_count; ++index)
+        {
+            const auto session = sessions.GetAt(index);
+            const auto playback_info = session.GetPlaybackInfo();
+            if(!playback_info)
+            {
+                continue;
+            }
+
+            const auto status = playback_info.PlaybackStatus();
+            if(status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    catch(...)
+    {
+        return IsAudioSessionPlaybackActive();
+    }
+#else
+    return IsAudioSessionPlaybackActive();
+#endif
+}
 #endif
 
 // ---------------------------
@@ -204,7 +346,7 @@ OpenRGBPluginInfo IdleProfilePlugin::GetPluginInfo()
     OpenRGBPluginInfo info;
     info.Name = "Idle Profile Plugin";
     info.Description = "Switches OpenRGB profiles based on user idle state";
-    info.Version = "1.0.1";
+    info.Version = "1.0.2";
     info.Commit = "local";
     info.URL = "https://openrgb.org";
     info.Icon = QImage();
@@ -296,7 +438,15 @@ void IdleProfilePlugin::Run()
     DisplayStateWatcher display_state_watcher;
     const bool has_display_state_watcher = display_state_watcher.Initialize();
     bool previous_display_is_off = false;
+
+    bool com_initialized = false;
+    const HRESULT com_init_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if(SUCCEEDED(com_init_result) || com_init_result == RPC_E_CHANGED_MODE)
+    {
+        com_initialized = true;
+    }
 #endif
+    bool media_idle_block_reported = false;
 
     while (running)
     {
@@ -307,6 +457,7 @@ void IdleProfilePlugin::Run()
         bool enabled_local;
         bool detect_screen_off_local;
         bool apply_active_on_screen_on_local;
+        bool pause_idle_while_media_playing_local;
         bool debug_logging_local;
 
         {
@@ -318,6 +469,7 @@ void IdleProfilePlugin::Run()
             enabled_local = enabled;
             detect_screen_off_local = detect_screen_off;
             apply_active_on_screen_on_local = apply_active_on_screen_on;
+            pause_idle_while_media_playing_local = pause_idle_while_media_playing;
             debug_logging_local = debug_logging;
         }
 
@@ -336,6 +488,14 @@ void IdleProfilePlugin::Run()
         const bool screen_turned_on = false;
 #endif
 
+    bool media_playing = false;
+#ifdef _WIN32
+    if(pause_idle_while_media_playing_local && com_initialized)
+    {
+        media_playing = IsMediaPlaybackActive();
+    }
+#endif
+
         if (!enabled_local)
         {
             std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -351,8 +511,9 @@ void IdleProfilePlugin::Run()
         // Enter idle
         // ---------------------------
         const bool screen_off_idle_trigger = detect_screen_off_local && display_is_off;
+        const bool media_blocks_idle = pause_idle_while_media_playing_local && media_playing;
 
-        if (!isIdle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger) && cooldown_passed)
+        if (!isIdle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger) && cooldown_passed && !media_blocks_idle)
         {
             if (!idle_profile_local.isEmpty())
             {
@@ -373,6 +534,19 @@ void IdleProfilePlugin::Run()
             isIdle = true;
             SetRuntimeState(true);
             last_transition = now;
+            media_idle_block_reported = false;
+        }
+        else if(!isIdle && media_blocks_idle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger))
+        {
+            if(debug_logging_local && !media_idle_block_reported)
+            {
+                DebugLog("Idle transition suppressed because media playback is active");
+                media_idle_block_reported = true;
+            }
+        }
+        else if(!media_blocks_idle)
+        {
+            media_idle_block_reported = false;
         }
 
         // ---------------------------
@@ -405,6 +579,13 @@ void IdleProfilePlugin::Run()
 
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
+
+#ifdef _WIN32
+    if(com_initialized && com_init_result != RPC_E_CHANGED_MODE)
+    {
+        CoUninitialize();
+    }
+#endif
 }
 
 // ---------------------------
@@ -423,6 +604,7 @@ void IdleProfilePlugin::LoadSettings()
     resume_cooldown_seconds = s.value("resume_cooldown_seconds", DEFAULT_RESUME_COOLDOWN_SECONDS).toInt();
     detect_screen_off = s.value("detect_screen_off", true).toBool();
     apply_active_on_screen_on = s.value("apply_active_on_screen_on", false).toBool();
+    pause_idle_while_media_playing = s.value("pause_idle_while_media_playing", true).toBool();
     debug_logging = s.value("debug_logging", false).toBool();
 }
 
@@ -439,6 +621,7 @@ void IdleProfilePlugin::SaveSettings()
     s.setValue("resume_cooldown_seconds", resume_cooldown_seconds);
     s.setValue("detect_screen_off", detect_screen_off);
     s.setValue("apply_active_on_screen_on", apply_active_on_screen_on);
+    s.setValue("pause_idle_while_media_playing", pause_idle_while_media_playing);
     s.setValue("debug_logging", debug_logging);
 }
 
@@ -552,6 +735,12 @@ bool IdleProfilePlugin::GetApplyActiveOnScreenOn()
     return apply_active_on_screen_on;
 }
 
+bool IdleProfilePlugin::GetPauseIdleWhileMediaPlaying()
+{
+    QMutexLocker locker(&settings_mutex);
+    return pause_idle_while_media_playing;
+}
+
 bool IdleProfilePlugin::GetDebugLogging()
 {
     QMutexLocker locker(&settings_mutex);
@@ -616,6 +805,12 @@ void IdleProfilePlugin::SetApplyActiveOnScreenOn(bool value)
 {
     QMutexLocker locker(&settings_mutex);
     apply_active_on_screen_on = value;
+}
+
+void IdleProfilePlugin::SetPauseIdleWhileMediaPlaying(bool value)
+{
+    QMutexLocker locker(&settings_mutex);
+    pause_idle_while_media_playing = value;
 }
 
 void IdleProfilePlugin::SetDebugLogging(bool value)

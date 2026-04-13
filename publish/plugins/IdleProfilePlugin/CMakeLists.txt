@@ -33,3 +33,7 @@ target_link_libraries(IdleProfilePlugin
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets
 )
+
+if(WIN32)
+    target_link_libraries(IdleProfilePlugin windowsapp)
+endif()

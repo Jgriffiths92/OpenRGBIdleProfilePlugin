@@ -42,6 +42,7 @@ public:
     int GetResumeCooldownSeconds();
     bool GetDetectScreenOff();
     bool GetApplyActiveOnScreenOn();
+    bool GetPauseIdleWhileMediaPlaying();
     bool GetDebugLogging();
     bool GetIsCurrentlyIdle();
     qint64 GetLastSwitchEpochMs();
@@ -54,6 +55,7 @@ public:
     void SetResumeCooldownSeconds(int seconds);
     void SetDetectScreenOff(bool value);
     void SetApplyActiveOnScreenOn(bool value);
+    void SetPauseIdleWhileMediaPlaying(bool value);
     void SetDebugLogging(bool value);
 
     // settings (shared with UI)
@@ -65,6 +67,7 @@ public:
     int resume_cooldown_seconds = 3;
     bool detect_screen_off = true;
     bool apply_active_on_screen_on = false;
+    bool pause_idle_while_media_playing = true;
     bool debug_logging = false;
 
 private:

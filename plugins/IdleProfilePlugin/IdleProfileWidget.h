@@ -28,6 +28,7 @@ private:
     QCheckBox* applyActiveOnStartBox;
     QCheckBox* detectScreenOffBox;
     QCheckBox* applyActiveOnScreenOnBox;
+    QCheckBox* pauseIdleWhileMediaPlayingBox;
     QCheckBox* debugLoggingBox;
     QSpinBox* cooldownSeconds;
     QPushButton* refreshProfilesButton;
