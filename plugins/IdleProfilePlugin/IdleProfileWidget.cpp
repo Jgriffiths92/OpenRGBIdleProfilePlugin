@@ -18,6 +18,9 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     detectScreenOffBox = new QCheckBox("Treat screen off as idle");
     layout->addWidget(detectScreenOffBox);
 
+    applyActiveOnScreenOnBox = new QCheckBox("Restore active profile when screen turns on");
+    layout->addWidget(applyActiveOnScreenOnBox);
+
     debugLoggingBox = new QCheckBox("Enable debug logging");
     layout->addWidget(debugLoggingBox);
 
@@ -63,6 +66,7 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     connect(enabledBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(applyActiveOnStartBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(detectScreenOffBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
+    connect(applyActiveOnScreenOnBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(debugLoggingBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(idleTime, qOverload<int>(&QSpinBox::valueChanged), this, &IdleProfileWidget::Save);
     connect(cooldownSeconds, qOverload<int>(&QSpinBox::valueChanged), this, &IdleProfileWidget::Save);
@@ -111,6 +115,7 @@ void IdleProfileWidget::RefreshUI()
     QSignalBlocker enabledBlocker(enabledBox);
     QSignalBlocker applyAtStartupBlocker(applyActiveOnStartBox);
     QSignalBlocker detectScreenOffBlocker(detectScreenOffBox);
+    QSignalBlocker applyActiveOnScreenOnBlocker(applyActiveOnScreenOnBox);
     QSignalBlocker debugLoggingBlocker(debugLoggingBox);
     QSignalBlocker idleTimeBlocker(idleTime);
     QSignalBlocker cooldownBlocker(cooldownSeconds);
@@ -120,11 +125,20 @@ void IdleProfileWidget::RefreshUI()
     enabledBox->setChecked(plugin->GetEnabled());
     applyActiveOnStartBox->setChecked(plugin->GetApplyActiveOnStart());
     detectScreenOffBox->setChecked(plugin->GetDetectScreenOff());
+    applyActiveOnScreenOnBox->setChecked(plugin->GetApplyActiveOnScreenOn());
     debugLoggingBox->setChecked(plugin->GetDebugLogging());
     idleTime->setValue(plugin->GetIdleSeconds());
     cooldownSeconds->setValue(plugin->GetResumeCooldownSeconds());
     idleProfileBox->setEditText(plugin->GetIdleProfile());
     activeProfileBox->setEditText(plugin->GetActiveProfile());
+
+    UpdateScreenStateDependency();
+}
+
+void IdleProfileWidget::UpdateScreenStateDependency()
+{
+    const bool detectScreenOff = detectScreenOffBox->isChecked();
+    applyActiveOnScreenOnBox->setEnabled(detectScreenOff);
 }
 
 void IdleProfileWidget::RefreshStatus()
@@ -147,9 +161,15 @@ void IdleProfileWidget::RefreshStatus()
 
 void IdleProfileWidget::Save()
 {
+    UpdateScreenStateDependency();
+
+    const bool detectScreenOff = detectScreenOffBox->isChecked();
+    const bool applyActiveOnScreenOn = detectScreenOff && applyActiveOnScreenOnBox->isChecked();
+
     plugin->SetEnabled(enabledBox->isChecked());
     plugin->SetApplyActiveOnStart(applyActiveOnStartBox->isChecked());
-    plugin->SetDetectScreenOff(detectScreenOffBox->isChecked());
+    plugin->SetDetectScreenOff(detectScreenOff);
+    plugin->SetApplyActiveOnScreenOn(applyActiveOnScreenOn);
     plugin->SetDebugLogging(debugLoggingBox->isChecked());
     plugin->SetIdleSeconds(idleTime->value());
     plugin->SetResumeCooldownSeconds(cooldownSeconds->value());

@@ -27,6 +27,7 @@ private:
     QCheckBox* enabledBox;
     QCheckBox* applyActiveOnStartBox;
     QCheckBox* detectScreenOffBox;
+    QCheckBox* applyActiveOnScreenOnBox;
     QCheckBox* debugLoggingBox;
     QSpinBox* cooldownSeconds;
     QPushButton* refreshProfilesButton;
@@ -38,5 +39,6 @@ private:
     void RefreshProfiles();
     void RefreshStatus();
     void RefreshUI();
+    void UpdateScreenStateDependency();
     void Save();
 };

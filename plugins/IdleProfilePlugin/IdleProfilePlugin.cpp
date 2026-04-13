@@ -280,6 +280,7 @@ void IdleProfilePlugin::Run()
 #ifdef _WIN32
     DisplayStateWatcher display_state_watcher;
     const bool has_display_state_watcher = display_state_watcher.Initialize();
+    bool previous_display_is_off = false;
 #endif
 
     while (running)
@@ -290,6 +291,7 @@ void IdleProfilePlugin::Run()
         QString active_profile_local;
         bool enabled_local;
         bool detect_screen_off_local;
+        bool apply_active_on_screen_on_local;
         bool debug_logging_local;
 
         {
@@ -300,18 +302,23 @@ void IdleProfilePlugin::Run()
             active_profile_local = active_profile;
             enabled_local = enabled;
             detect_screen_off_local = detect_screen_off;
+            apply_active_on_screen_on_local = apply_active_on_screen_on;
             debug_logging_local = debug_logging;
         }
 
 #ifdef _WIN32
         bool display_is_off = false;
+        bool screen_turned_on = false;
         if(has_display_state_watcher)
         {
             display_state_watcher.PumpMessages();
             display_is_off = display_state_watcher.IsDisplayOff();
+            screen_turned_on = previous_display_is_off && !display_is_off;
+            previous_display_is_off = display_is_off;
         }
 #else
         const bool display_is_off = false;
+        const bool screen_turned_on = false;
 #endif
 
         if (!enabled_local)
@@ -356,14 +363,23 @@ void IdleProfilePlugin::Run()
         // ---------------------------
         // Return to active
         // ---------------------------
-        if (isIdle && idleTime < 2000 && cooldown_passed)
+        const bool wake_idle_trigger = apply_active_on_screen_on_local && screen_turned_on;
+
+        if (isIdle && (idleTime < 2000 || wake_idle_trigger) && cooldown_passed)
         {
             if (!active_profile_local.isEmpty())
             {
                 LoadProfile(active_profile_local);
                 if(debug_logging_local)
                 {
-                    DebugLog(QString("Returned to active profile: %1").arg(active_profile_local));
+                    if(wake_idle_trigger)
+                    {
+                        DebugLog(QString("Returned to active profile (screen on): %1").arg(active_profile_local));
+                    }
+                    else
+                    {
+                        DebugLog(QString("Returned to active profile: %1").arg(active_profile_local));
+                    }
                 }
             }
 
@@ -391,6 +407,7 @@ void IdleProfilePlugin::LoadSettings()
     apply_active_on_start = s.value("apply_active_on_start", false).toBool();
     resume_cooldown_seconds = s.value("resume_cooldown_seconds", DEFAULT_RESUME_COOLDOWN_SECONDS).toInt();
     detect_screen_off = s.value("detect_screen_off", true).toBool();
+    apply_active_on_screen_on = s.value("apply_active_on_screen_on", false).toBool();
     debug_logging = s.value("debug_logging", false).toBool();
 }
 
@@ -406,6 +423,7 @@ void IdleProfilePlugin::SaveSettings()
     s.setValue("apply_active_on_start", apply_active_on_start);
     s.setValue("resume_cooldown_seconds", resume_cooldown_seconds);
     s.setValue("detect_screen_off", detect_screen_off);
+    s.setValue("apply_active_on_screen_on", apply_active_on_screen_on);
     s.setValue("debug_logging", debug_logging);
 }
 
@@ -513,6 +531,12 @@ bool IdleProfilePlugin::GetDetectScreenOff()
     return detect_screen_off;
 }
 
+bool IdleProfilePlugin::GetApplyActiveOnScreenOn()
+{
+    QMutexLocker locker(&settings_mutex);
+    return apply_active_on_screen_on;
+}
+
 bool IdleProfilePlugin::GetDebugLogging()
 {
     QMutexLocker locker(&settings_mutex);
@@ -571,6 +595,12 @@ void IdleProfilePlugin::SetDetectScreenOff(bool value)
 {
     QMutexLocker locker(&settings_mutex);
     detect_screen_off = value;
+}
+
+void IdleProfilePlugin::SetApplyActiveOnScreenOn(bool value)
+{
+    QMutexLocker locker(&settings_mutex);
+    apply_active_on_screen_on = value;
 }
 
 void IdleProfilePlugin::SetDebugLogging(bool value)
