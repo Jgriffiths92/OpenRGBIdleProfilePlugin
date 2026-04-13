@@ -21,6 +21,10 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     applyActiveOnScreenOnBox = new QCheckBox("Restore active profile when screen turns on");
     layout->addWidget(applyActiveOnScreenOnBox);
 
+    auto* screenStateNoteLabel = new QLabel("Note: Screen power detection may not work with all monitors.");
+    screenStateNoteLabel->setWordWrap(true);
+    layout->addWidget(screenStateNoteLabel);
+
     debugLoggingBox = new QCheckBox("Enable debug logging");
     layout->addWidget(debugLoggingBox);
 
