@@ -8,6 +8,7 @@
 #include <QSet>
 #ifdef _WIN32
 #include <windows.h>
+#include <dbt.h>
 #endif
 #include <chrono>
 #include <thread>
@@ -17,6 +18,131 @@
 #include <QString>
 #include <QDateTime>
 #include <QDebug>
+
+#ifdef _WIN32
+// Tracks console display power state using a hidden message-only window.
+class DisplayStateWatcher
+{
+public:
+    ~DisplayStateWatcher()
+    {
+        Shutdown();
+    }
+
+    bool Initialize()
+    {
+        const wchar_t* class_name = L"IdleProfilePluginDisplayStateWatcherWindow";
+
+        WNDCLASSW wc = {};
+        wc.lpfnWndProc = &DisplayStateWatcher::WindowProc;
+        wc.hInstance = GetModuleHandle(nullptr);
+        wc.lpszClassName = class_name;
+
+        RegisterClassW(&wc);
+
+        hwnd = CreateWindowExW(
+            0,
+            class_name,
+            L"",
+            0,
+            0,
+            0,
+            0,
+            0,
+            HWND_MESSAGE,
+            nullptr,
+            wc.hInstance,
+            this
+        );
+
+        if(hwnd == nullptr)
+        {
+            return false;
+        }
+
+        notify_handle = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
+
+        if(notify_handle == nullptr)
+        {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+            return false;
+        }
+
+        return true;
+    }
+
+    void PumpMessages()
+    {
+        if(hwnd == nullptr)
+        {
+            return;
+        }
+
+        MSG msg;
+        while(PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    bool IsDisplayOff() const
+    {
+        return display_off;
+    }
+
+private:
+    static LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam)
+    {
+        if(msg == WM_NCCREATE)
+        {
+            const auto* create_struct = reinterpret_cast<CREATESTRUCTW*>(lparam);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create_struct->lpCreateParams));
+            return TRUE;
+        }
+
+        auto* self = reinterpret_cast<DisplayStateWatcher*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        if(self == nullptr)
+        {
+            return DefWindowProcW(window, msg, wparam, lparam);
+        }
+
+        if(msg == WM_POWERBROADCAST && wparam == PBT_POWERSETTINGCHANGE)
+        {
+            const auto* setting = reinterpret_cast<POWERBROADCAST_SETTING*>(lparam);
+
+            if(setting != nullptr && IsEqualGUID(setting->PowerSetting, GUID_CONSOLE_DISPLAY_STATE) && setting->DataLength >= sizeof(DWORD))
+            {
+                const DWORD state = *reinterpret_cast<const DWORD*>(setting->Data);
+                self->display_off = (state == 0);
+                return TRUE;
+            }
+        }
+
+        return DefWindowProcW(window, msg, wparam, lparam);
+    }
+
+    void Shutdown()
+    {
+        if(notify_handle != nullptr)
+        {
+            UnregisterPowerSettingNotification(notify_handle);
+            notify_handle = nullptr;
+        }
+
+        if(hwnd != nullptr)
+        {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+        }
+    }
+
+    HWND hwnd = nullptr;
+    HPOWERNOTIFY notify_handle = nullptr;
+    bool display_off = false;
+};
+#endif
 
 // ---------------------------
 // Idle detection (Windows API)
@@ -151,6 +277,11 @@ void IdleProfilePlugin::Run()
     bool isIdle = false;
     auto last_transition = std::chrono::steady_clock::now() - std::chrono::hours(1);
 
+#ifdef _WIN32
+    DisplayStateWatcher display_state_watcher;
+    const bool has_display_state_watcher = display_state_watcher.Initialize();
+#endif
+
     while (running)
     {
         int idle_seconds_local;
@@ -158,6 +289,7 @@ void IdleProfilePlugin::Run()
         QString idle_profile_local;
         QString active_profile_local;
         bool enabled_local;
+        bool detect_screen_off_local;
         bool debug_logging_local;
 
         {
@@ -167,8 +299,20 @@ void IdleProfilePlugin::Run()
             idle_profile_local = idle_profile;
             active_profile_local = active_profile;
             enabled_local = enabled;
+            detect_screen_off_local = detect_screen_off;
             debug_logging_local = debug_logging;
         }
+
+#ifdef _WIN32
+        bool display_is_off = false;
+        if(has_display_state_watcher)
+        {
+            display_state_watcher.PumpMessages();
+            display_is_off = display_state_watcher.IsDisplayOff();
+        }
+#else
+        const bool display_is_off = false;
+#endif
 
         if (!enabled_local)
         {
@@ -184,14 +328,23 @@ void IdleProfilePlugin::Run()
         // ---------------------------
         // Enter idle
         // ---------------------------
-        if (!isIdle && idleTime >= (DWORD)idle_seconds_local * 1000 && cooldown_passed)
+        const bool screen_off_idle_trigger = detect_screen_off_local && display_is_off;
+
+        if (!isIdle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger) && cooldown_passed)
         {
             if (!idle_profile_local.isEmpty())
             {
                 LoadProfile(idle_profile_local);
                 if(debug_logging_local)
                 {
-                    DebugLog(QString("Switched to idle profile: %1").arg(idle_profile_local));
+                    if(screen_off_idle_trigger)
+                    {
+                        DebugLog(QString("Switched to idle profile (screen off): %1").arg(idle_profile_local));
+                    }
+                    else
+                    {
+                        DebugLog(QString("Switched to idle profile: %1").arg(idle_profile_local));
+                    }
                 }
             }
 
@@ -237,6 +390,7 @@ void IdleProfilePlugin::LoadSettings()
     enabled = s.value("enabled", true).toBool();
     apply_active_on_start = s.value("apply_active_on_start", false).toBool();
     resume_cooldown_seconds = s.value("resume_cooldown_seconds", DEFAULT_RESUME_COOLDOWN_SECONDS).toInt();
+    detect_screen_off = s.value("detect_screen_off", true).toBool();
     debug_logging = s.value("debug_logging", false).toBool();
 }
 
@@ -251,6 +405,7 @@ void IdleProfilePlugin::SaveSettings()
     s.setValue("enabled", enabled);
     s.setValue("apply_active_on_start", apply_active_on_start);
     s.setValue("resume_cooldown_seconds", resume_cooldown_seconds);
+    s.setValue("detect_screen_off", detect_screen_off);
     s.setValue("debug_logging", debug_logging);
 }
 
@@ -352,6 +507,12 @@ int IdleProfilePlugin::GetResumeCooldownSeconds()
     return resume_cooldown_seconds;
 }
 
+bool IdleProfilePlugin::GetDetectScreenOff()
+{
+    QMutexLocker locker(&settings_mutex);
+    return detect_screen_off;
+}
+
 bool IdleProfilePlugin::GetDebugLogging()
 {
     QMutexLocker locker(&settings_mutex);
@@ -404,6 +565,12 @@ void IdleProfilePlugin::SetResumeCooldownSeconds(int seconds)
 {
     QMutexLocker locker(&settings_mutex);
     resume_cooldown_seconds = seconds;
+}
+
+void IdleProfilePlugin::SetDetectScreenOff(bool value)
+{
+    QMutexLocker locker(&settings_mutex);
+    detect_screen_off = value;
 }
 
 void IdleProfilePlugin::SetDebugLogging(bool value)

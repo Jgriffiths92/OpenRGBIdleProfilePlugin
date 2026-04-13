@@ -26,6 +26,7 @@ private:
     QComboBox* activeProfileBox;
     QCheckBox* enabledBox;
     QCheckBox* applyActiveOnStartBox;
+    QCheckBox* detectScreenOffBox;
     QCheckBox* debugLoggingBox;
     QSpinBox* cooldownSeconds;
     QPushButton* refreshProfilesButton;
