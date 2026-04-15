@@ -18,6 +18,12 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     detectScreenOffBox = new QCheckBox("Treat screen off as idle");
     layout->addWidget(detectScreenOffBox);
 
+    treatLockScreenAsIdleBox = new QCheckBox("Treat lock screen as instant idle");
+    layout->addWidget(treatLockScreenAsIdleBox);
+
+    applyActiveOnUnlockBox = new QCheckBox("Restore active profile when session unlocks");
+    layout->addWidget(applyActiveOnUnlockBox);
+
     applyActiveOnScreenOnBox = new QCheckBox("Restore active profile when screen turns on");
     layout->addWidget(applyActiveOnScreenOnBox);
 
@@ -73,6 +79,8 @@ IdleProfileWidget::IdleProfileWidget(IdleProfilePlugin* p, QWidget* parent)
     connect(enabledBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(applyActiveOnStartBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(detectScreenOffBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
+    connect(treatLockScreenAsIdleBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
+    connect(applyActiveOnUnlockBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(applyActiveOnScreenOnBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(pauseIdleWhileMediaPlayingBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
     connect(debugLoggingBox, &QCheckBox::toggled, this, &IdleProfileWidget::Save);
@@ -123,6 +131,8 @@ void IdleProfileWidget::RefreshUI()
     QSignalBlocker enabledBlocker(enabledBox);
     QSignalBlocker applyAtStartupBlocker(applyActiveOnStartBox);
     QSignalBlocker detectScreenOffBlocker(detectScreenOffBox);
+    QSignalBlocker treatLockScreenAsIdleBlocker(treatLockScreenAsIdleBox);
+    QSignalBlocker applyActiveOnUnlockBlocker(applyActiveOnUnlockBox);
     QSignalBlocker applyActiveOnScreenOnBlocker(applyActiveOnScreenOnBox);
     QSignalBlocker pauseIdleWhileMediaPlayingBlocker(pauseIdleWhileMediaPlayingBox);
     QSignalBlocker debugLoggingBlocker(debugLoggingBox);
@@ -134,6 +144,8 @@ void IdleProfileWidget::RefreshUI()
     enabledBox->setChecked(plugin->GetEnabled());
     applyActiveOnStartBox->setChecked(plugin->GetApplyActiveOnStart());
     detectScreenOffBox->setChecked(plugin->GetDetectScreenOff());
+    treatLockScreenAsIdleBox->setChecked(plugin->GetTreatLockScreenAsIdle());
+    applyActiveOnUnlockBox->setChecked(plugin->GetApplyActiveOnUnlock());
     applyActiveOnScreenOnBox->setChecked(plugin->GetApplyActiveOnScreenOn());
     pauseIdleWhileMediaPlayingBox->setChecked(plugin->GetPauseIdleWhileMediaPlaying());
     debugLoggingBox->setChecked(plugin->GetDebugLogging());
@@ -142,13 +154,16 @@ void IdleProfileWidget::RefreshUI()
     idleProfileBox->setEditText(plugin->GetIdleProfile());
     activeProfileBox->setEditText(plugin->GetActiveProfile());
 
-    UpdateScreenStateDependency();
+    UpdateDependencies();
 }
 
-void IdleProfileWidget::UpdateScreenStateDependency()
+void IdleProfileWidget::UpdateDependencies()
 {
     const bool detectScreenOff = detectScreenOffBox->isChecked();
+    const bool treatLockScreenAsIdle = treatLockScreenAsIdleBox->isChecked();
+
     applyActiveOnScreenOnBox->setEnabled(detectScreenOff);
+    applyActiveOnUnlockBox->setEnabled(treatLockScreenAsIdle);
 }
 
 void IdleProfileWidget::RefreshStatus()
@@ -171,14 +186,18 @@ void IdleProfileWidget::RefreshStatus()
 
 void IdleProfileWidget::Save()
 {
-    UpdateScreenStateDependency();
+    UpdateDependencies();
 
     const bool detectScreenOff = detectScreenOffBox->isChecked();
+    const bool treatLockScreenAsIdle = treatLockScreenAsIdleBox->isChecked();
     const bool applyActiveOnScreenOn = detectScreenOff && applyActiveOnScreenOnBox->isChecked();
+    const bool applyActiveOnUnlock = treatLockScreenAsIdle && applyActiveOnUnlockBox->isChecked();
 
     plugin->SetEnabled(enabledBox->isChecked());
     plugin->SetApplyActiveOnStart(applyActiveOnStartBox->isChecked());
     plugin->SetDetectScreenOff(detectScreenOff);
+    plugin->SetTreatLockScreenAsIdle(treatLockScreenAsIdleBox->isChecked());
+    plugin->SetApplyActiveOnUnlock(applyActiveOnUnlock);
     plugin->SetApplyActiveOnScreenOn(applyActiveOnScreenOn);
     plugin->SetPauseIdleWhileMediaPlaying(pauseIdleWhileMediaPlayingBox->isChecked());
     plugin->SetDebugLogging(debugLoggingBox->isChecked());

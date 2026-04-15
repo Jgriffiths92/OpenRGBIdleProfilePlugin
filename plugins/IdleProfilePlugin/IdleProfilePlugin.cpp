@@ -9,6 +9,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <dbt.h>
+#include <wtsapi32.h>
 #endif
 #include <chrono>
 #include <thread>
@@ -33,6 +34,7 @@
 #endif
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "Uuid.lib")
+#pragma comment(lib, "Wtsapi32.lib")
 
 #ifdef Playing
 #undef Playing
@@ -174,6 +176,131 @@ private:
     HPOWERNOTIFY notify_console_display_state_handle = nullptr;
     HPOWERNOTIFY notify_monitor_power_handle = nullptr;
     bool display_off = false;
+};
+
+class SessionLockWatcher
+{
+public:
+    ~SessionLockWatcher()
+    {
+        Shutdown();
+    }
+
+    bool Initialize()
+    {
+        const wchar_t* class_name = L"IdleProfilePluginSessionLockWatcherWindow";
+
+        WNDCLASSW wc = {};
+        wc.lpfnWndProc = &SessionLockWatcher::WindowProc;
+        wc.hInstance = GetModuleHandle(nullptr);
+        wc.lpszClassName = class_name;
+
+        RegisterClassW(&wc);
+
+        hwnd = CreateWindowExW(
+            0,
+            class_name,
+            L"",
+            0,
+            0,
+            0,
+            0,
+            0,
+            HWND_MESSAGE,
+            nullptr,
+            wc.hInstance,
+            this
+        );
+
+        if(hwnd == nullptr)
+        {
+            return false;
+        }
+
+        const BOOL registered = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
+        if(!registered)
+        {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+            return false;
+        }
+
+        registered_for_notifications = true;
+        return true;
+    }
+
+    void PumpMessages()
+    {
+        if(hwnd == nullptr)
+        {
+            return;
+        }
+
+        MSG msg;
+        while(PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    bool IsSessionLocked() const
+    {
+        return session_locked;
+    }
+
+private:
+    static LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam)
+    {
+        if(msg == WM_NCCREATE)
+        {
+            const auto* create_struct = reinterpret_cast<CREATESTRUCTW*>(lparam);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create_struct->lpCreateParams));
+            return TRUE;
+        }
+
+        auto* self = reinterpret_cast<SessionLockWatcher*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        if(self == nullptr)
+        {
+            return DefWindowProcW(window, msg, wparam, lparam);
+        }
+
+        if(msg == WM_WTSSESSION_CHANGE)
+        {
+            if(wparam == WTS_SESSION_LOCK)
+            {
+                self->session_locked = true;
+                return TRUE;
+            }
+
+            if(wparam == WTS_SESSION_UNLOCK)
+            {
+                self->session_locked = false;
+                return TRUE;
+            }
+        }
+
+        return DefWindowProcW(window, msg, wparam, lparam);
+    }
+
+    void Shutdown()
+    {
+        if(hwnd != nullptr && registered_for_notifications)
+        {
+            WTSUnRegisterSessionNotification(hwnd);
+            registered_for_notifications = false;
+        }
+
+        if(hwnd != nullptr)
+        {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+        }
+    }
+
+    HWND hwnd = nullptr;
+    bool registered_for_notifications = false;
+    bool session_locked = false;
 };
 
 static bool IsAudioSessionPlaybackActive()
@@ -346,7 +473,7 @@ OpenRGBPluginInfo IdleProfilePlugin::GetPluginInfo()
     OpenRGBPluginInfo info;
     info.Name = "Idle Profile Plugin";
     info.Description = "Switches OpenRGB profiles based on user idle state";
-    info.Version = "1.0.2";
+    info.Version = "1.0.3";
     info.Commit = "local";
     info.URL = "https://openrgb.org";
     info.Icon = QImage();
@@ -439,6 +566,10 @@ void IdleProfilePlugin::Run()
     const bool has_display_state_watcher = display_state_watcher.Initialize();
     bool previous_display_is_off = false;
 
+    SessionLockWatcher session_lock_watcher;
+    const bool has_session_lock_watcher = session_lock_watcher.Initialize();
+    bool previous_session_is_locked = false;
+
     bool com_initialized = false;
     const HRESULT com_init_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if(SUCCEEDED(com_init_result) || com_init_result == RPC_E_CHANGED_MODE)
@@ -456,7 +587,9 @@ void IdleProfilePlugin::Run()
         QString active_profile_local;
         bool enabled_local;
         bool detect_screen_off_local;
+        bool treat_lock_screen_as_idle_local;
         bool apply_active_on_screen_on_local;
+        bool apply_active_on_unlock_local;
         bool pause_idle_while_media_playing_local;
         bool debug_logging_local;
 
@@ -468,7 +601,9 @@ void IdleProfilePlugin::Run()
             active_profile_local = active_profile;
             enabled_local = enabled;
             detect_screen_off_local = detect_screen_off;
+            treat_lock_screen_as_idle_local = treat_lock_screen_as_idle;
             apply_active_on_screen_on_local = apply_active_on_screen_on;
+            apply_active_on_unlock_local = apply_active_on_unlock;
             pause_idle_while_media_playing_local = pause_idle_while_media_playing;
             debug_logging_local = debug_logging;
         }
@@ -483,9 +618,21 @@ void IdleProfilePlugin::Run()
             screen_turned_on = previous_display_is_off && !display_is_off;
             previous_display_is_off = display_is_off;
         }
+
+        bool session_is_locked = false;
+        bool session_unlocked = false;
+        if(has_session_lock_watcher)
+        {
+            session_lock_watcher.PumpMessages();
+            session_is_locked = session_lock_watcher.IsSessionLocked();
+            session_unlocked = previous_session_is_locked && !session_is_locked;
+            previous_session_is_locked = session_is_locked;
+        }
 #else
         const bool display_is_off = false;
         const bool screen_turned_on = false;
+        const bool session_is_locked = false;
+        const bool session_unlocked = false;
 #endif
 
     bool media_playing = false;
@@ -511,16 +658,21 @@ void IdleProfilePlugin::Run()
         // Enter idle
         // ---------------------------
         const bool screen_off_idle_trigger = detect_screen_off_local && display_is_off;
+        const bool lock_screen_idle_trigger = treat_lock_screen_as_idle_local && session_is_locked;
         const bool media_blocks_idle = pause_idle_while_media_playing_local && media_playing;
 
-        if (!isIdle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger) && cooldown_passed && !media_blocks_idle)
+        if (!isIdle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger || lock_screen_idle_trigger) && cooldown_passed && !media_blocks_idle)
         {
             if (!idle_profile_local.isEmpty())
             {
                 LoadProfile(idle_profile_local);
                 if(debug_logging_local)
                 {
-                    if(screen_off_idle_trigger)
+                    if(lock_screen_idle_trigger)
+                    {
+                        DebugLog(QString("Switched to idle profile (lock screen): %1").arg(idle_profile_local));
+                    }
+                    else if(screen_off_idle_trigger)
                     {
                         DebugLog(QString("Switched to idle profile (screen off): %1").arg(idle_profile_local));
                     }
@@ -536,7 +688,7 @@ void IdleProfilePlugin::Run()
             last_transition = now;
             media_idle_block_reported = false;
         }
-        else if(!isIdle && media_blocks_idle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger))
+        else if(!isIdle && media_blocks_idle && (idleTime >= (DWORD)idle_seconds_local * 1000 || screen_off_idle_trigger || lock_screen_idle_trigger))
         {
             if(debug_logging_local && !media_idle_block_reported)
             {
@@ -553,15 +705,20 @@ void IdleProfilePlugin::Run()
         // Return to active
         // ---------------------------
         const bool wake_idle_trigger = apply_active_on_screen_on_local && screen_turned_on;
+        const bool unlock_idle_trigger = apply_active_on_unlock_local && session_unlocked;
 
-        if (isIdle && (idleTime < 2000 || wake_idle_trigger) && cooldown_passed)
+        if (isIdle && (idleTime < 2000 || wake_idle_trigger || unlock_idle_trigger) && cooldown_passed)
         {
             if (!active_profile_local.isEmpty())
             {
                 LoadProfile(active_profile_local);
                 if(debug_logging_local)
                 {
-                    if(wake_idle_trigger)
+                    if(unlock_idle_trigger)
+                    {
+                        DebugLog(QString("Returned to active profile (session unlock): %1").arg(active_profile_local));
+                    }
+                    else if(wake_idle_trigger)
                     {
                         DebugLog(QString("Returned to active profile (screen on): %1").arg(active_profile_local));
                     }
@@ -603,7 +760,9 @@ void IdleProfilePlugin::LoadSettings()
     apply_active_on_start = s.value("apply_active_on_start", false).toBool();
     resume_cooldown_seconds = s.value("resume_cooldown_seconds", DEFAULT_RESUME_COOLDOWN_SECONDS).toInt();
     detect_screen_off = s.value("detect_screen_off", true).toBool();
+    treat_lock_screen_as_idle = s.value("treat_lock_screen_as_idle", true).toBool();
     apply_active_on_screen_on = s.value("apply_active_on_screen_on", false).toBool();
+    apply_active_on_unlock = s.value("apply_active_on_unlock", true).toBool();
     pause_idle_while_media_playing = s.value("pause_idle_while_media_playing", true).toBool();
     debug_logging = s.value("debug_logging", false).toBool();
 }
@@ -620,7 +779,9 @@ void IdleProfilePlugin::SaveSettings()
     s.setValue("apply_active_on_start", apply_active_on_start);
     s.setValue("resume_cooldown_seconds", resume_cooldown_seconds);
     s.setValue("detect_screen_off", detect_screen_off);
+    s.setValue("treat_lock_screen_as_idle", treat_lock_screen_as_idle);
     s.setValue("apply_active_on_screen_on", apply_active_on_screen_on);
+    s.setValue("apply_active_on_unlock", apply_active_on_unlock);
     s.setValue("pause_idle_while_media_playing", pause_idle_while_media_playing);
     s.setValue("debug_logging", debug_logging);
 }
@@ -729,10 +890,22 @@ bool IdleProfilePlugin::GetDetectScreenOff()
     return detect_screen_off;
 }
 
+bool IdleProfilePlugin::GetTreatLockScreenAsIdle()
+{
+    QMutexLocker locker(&settings_mutex);
+    return treat_lock_screen_as_idle;
+}
+
 bool IdleProfilePlugin::GetApplyActiveOnScreenOn()
 {
     QMutexLocker locker(&settings_mutex);
     return apply_active_on_screen_on;
+}
+
+bool IdleProfilePlugin::GetApplyActiveOnUnlock()
+{
+    QMutexLocker locker(&settings_mutex);
+    return apply_active_on_unlock;
 }
 
 bool IdleProfilePlugin::GetPauseIdleWhileMediaPlaying()
@@ -801,10 +974,22 @@ void IdleProfilePlugin::SetDetectScreenOff(bool value)
     detect_screen_off = value;
 }
 
+void IdleProfilePlugin::SetTreatLockScreenAsIdle(bool value)
+{
+    QMutexLocker locker(&settings_mutex);
+    treat_lock_screen_as_idle = value;
+}
+
 void IdleProfilePlugin::SetApplyActiveOnScreenOn(bool value)
 {
     QMutexLocker locker(&settings_mutex);
     apply_active_on_screen_on = value;
+}
+
+void IdleProfilePlugin::SetApplyActiveOnUnlock(bool value)
+{
+    QMutexLocker locker(&settings_mutex);
+    apply_active_on_unlock = value;
 }
 
 void IdleProfilePlugin::SetPauseIdleWhileMediaPlaying(bool value)

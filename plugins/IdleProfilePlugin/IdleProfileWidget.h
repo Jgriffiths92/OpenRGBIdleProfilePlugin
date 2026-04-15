@@ -27,7 +27,9 @@ private:
     QCheckBox* enabledBox;
     QCheckBox* applyActiveOnStartBox;
     QCheckBox* detectScreenOffBox;
+    QCheckBox* treatLockScreenAsIdleBox;
     QCheckBox* applyActiveOnScreenOnBox;
+    QCheckBox* applyActiveOnUnlockBox;
     QCheckBox* pauseIdleWhileMediaPlayingBox;
     QCheckBox* debugLoggingBox;
     QSpinBox* cooldownSeconds;
@@ -40,6 +42,6 @@ private:
     void RefreshProfiles();
     void RefreshStatus();
     void RefreshUI();
-    void UpdateScreenStateDependency();
+    void UpdateDependencies();
     void Save();
 };

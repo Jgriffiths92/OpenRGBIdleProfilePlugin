@@ -2,11 +2,11 @@
 
 ## Version
 
-1.0.2
+1.0.3
 
 ## Summary
 
-Media-aware idle suppression update for the OpenRGB Idle Profile Plugin.
+Lock-aware idle switching and restore update for the OpenRGB Idle Profile Plugin.
 
 ## Highlights
 
@@ -14,9 +14,12 @@ Media-aware idle suppression update for the OpenRGB Idle Profile Plugin.
 - Active profile restore on user input resume
 - Optional screen-off detection to trigger idle profile when display powers down
 - Optional active profile restore when display powers back on
+- Optional lock-screen instant idle trigger
+- Optional active profile restore on session unlock
 - Optional media playback guard to prevent idle switch while media is playing
 - Hybrid media detection: Global Media Session API with audio-session fallback
 - Media playback guard is enabled by default
+- Lock-screen fallback and unlock restore are enabled by default for improved robustness
 - Monitor compatibility note in plugin UI for display power events
 - Top-level OpenRGB tab interface
 - Profile refresh button
@@ -49,6 +52,6 @@ Media-aware idle suppression update for the OpenRGB Idle Profile Plugin.
 - [x] Build release DLL
 - [X] Verify plugin loads in OpenRGB
 - [X] Verify idle -> active switching
-- [x] Attach DLL to GitLab Release assets
-- [x] Attach DLL to GitHub Release assets
-- [x] Update README compatibility notes if needed
+- [ ] Attach DLL to GitLab Release assets
+- [ ] Attach DLL to GitHub Release assets
+- [ ] Update README compatibility notes if needed

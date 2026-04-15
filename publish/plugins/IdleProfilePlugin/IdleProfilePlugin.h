@@ -41,7 +41,9 @@ public:
     bool GetApplyActiveOnStart();
     int GetResumeCooldownSeconds();
     bool GetDetectScreenOff();
+    bool GetTreatLockScreenAsIdle();
     bool GetApplyActiveOnScreenOn();
+    bool GetApplyActiveOnUnlock();
     bool GetPauseIdleWhileMediaPlaying();
     bool GetDebugLogging();
     bool GetIsCurrentlyIdle();
@@ -54,7 +56,9 @@ public:
     void SetApplyActiveOnStart(bool value);
     void SetResumeCooldownSeconds(int seconds);
     void SetDetectScreenOff(bool value);
+    void SetTreatLockScreenAsIdle(bool value);
     void SetApplyActiveOnScreenOn(bool value);
+    void SetApplyActiveOnUnlock(bool value);
     void SetPauseIdleWhileMediaPlaying(bool value);
     void SetDebugLogging(bool value);
 
@@ -66,7 +70,9 @@ public:
     bool apply_active_on_start = false;
     int resume_cooldown_seconds = 3;
     bool detect_screen_off = true;
+    bool treat_lock_screen_as_idle = true;
     bool apply_active_on_screen_on = false;
+    bool apply_active_on_unlock = true;
     bool pause_idle_while_media_playing = true;
     bool debug_logging = false;
 
